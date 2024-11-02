@@ -1,0 +1,43 @@
+import json
+import boto3
+import csv
+import os
+
+s3_client = boto3.client('s3')
+
+def lambda_handler(event, context):
+    # Get the bucket name and file key from the event
+    bucket_name = event['Records'][0]['s3']['bucket']['name']
+    file_key = event['Records'][0]['s3']['object']['key']
+    
+    # Download the CSV file from S3
+    response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+    csv_content = response['Body'].read().decode('utf-8').splitlines()
+    
+    # Transform CSV data (e.g., convert amounts to cents)
+    
+    csv_reader = csv.DictReader(csv_content)
+    
+    #Prepare output strings for each record
+    output_lines = []
+    
+    for row in csv_reader:
+        transformed_row = {
+            'transaction_id': row['transaction_id'],
+            'account_id': row['account_id'],
+            'amount_cents': int(float(row['amount']) * 100),  # Convert amount to cents
+            'transaction_date': row['transaction_date']
+        }
+        output_lines.append(json.dumps(transformed_row))
+    
+    final_output = "\n".join(output_lines)
+    # Write transformed data back to S3 in JSON format for loading into Redshift later
+    output_file_key = f"transformed/{file_key.split('/')[-1].replace('.csv', '.json')}"
+    s3_client.put_object(Bucket=bucket_name, Key=output_file_key,
+                          Body=final_output)
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Data transformed and saved!')
+    }
+    
